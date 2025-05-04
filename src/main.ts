@@ -109,7 +109,7 @@ let previousTimeScale: number = 1; // Store time scale
 // Add day-night cycle variables
 let timeOfDay: number = 0; // 0 to 1: 0 = noon, 0.5 = midnight, 1 = noon again
 let targetTimeOfDay: number = 0; // Target time of day based on score
-let dayNightCycleSpeed: number = 0.005; // How quickly the day/night cycle transitions (higher = faster)
+let dayNightCycleSpeed: number = 0.0025; // How quickly the day/night cycle transitions (reduced for smoother transition)
 let sunMoon: Phaser.GameObjects.Container;
 let skyOverlay: Phaser.GameObjects.Rectangle;
 let stars: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -782,26 +782,69 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
     }
     
     // Calculate target time of day based on score
-    // Score 0-9: Day (timeOfDay = 0.0)
-    // Score 10-19: Night (timeOfDay = 0.5)
-    // Score 20-29: Day (timeOfDay = 0.0)
-    // etc.
+    // Make the transition span more of the score range for smoother progression
     const cyclePosition = Math.floor(score / DAY_NIGHT_CYCLE_SCORE);
-    targetTimeOfDay = cyclePosition % 2 === 0 ? 0.0 : 0.5;
+    const cycleProgress = (score % DAY_NIGHT_CYCLE_SCORE) / DAY_NIGHT_CYCLE_SCORE;
     
-    // Gradually transition to target time of day
-    if (timeOfDay !== targetTimeOfDay) {
-        if (Math.abs(timeOfDay - targetTimeOfDay) < dayNightCycleSpeed) {
-            timeOfDay = targetTimeOfDay;
-        } else if (timeOfDay < targetTimeOfDay) {
-            timeOfDay += dayNightCycleSpeed;
+    // Instead of jumping directly to 0.0 or 0.5, calculate a smooth progression
+    if (cyclePosition % 2 === 0) {
+        // Day to night transition
+        // First 25% = full day (0.0)
+        // Next 50% = sunset transition (0.0 to 0.5)
+        // Last 25% = full night (0.5)
+        if (cycleProgress < 0.25) {
+            targetTimeOfDay = 0.0; // Full day
+        } else if (cycleProgress < 0.75) {
+            // Smooth transition from day to night (map 0.25-0.75 to 0.0-0.5)
+            targetTimeOfDay = ((cycleProgress - 0.25) / 0.5) * 0.5;
         } else {
-            timeOfDay -= dayNightCycleSpeed;
+            targetTimeOfDay = 0.5; // Full night
+        }
+    } else {
+        // Night to day transition
+        // First 25% = full night (0.5)
+        // Next 50% = sunrise transition (0.5 to 1.0)
+        // Last 25% = full day (0.0/1.0)
+        if (cycleProgress < 0.25) {
+            targetTimeOfDay = 0.5; // Full night
+        } else if (cycleProgress < 0.75) {
+            // Smooth transition from night to day (map 0.25-0.75 to 0.5-1.0)
+            targetTimeOfDay = 0.5 + ((cycleProgress - 0.25) / 0.5) * 0.5;
+        } else {
+            targetTimeOfDay = 0.0; // Back to full day (equivalent to 1.0)
         }
     }
     
-    // Clamp timeOfDay to valid range
-    timeOfDay = Math.max(0, Math.min(1, timeOfDay));
+    // Gradually transition to target time of day with easing for smoother feel
+    if (timeOfDay !== targetTimeOfDay) {
+        // Calculate the distance to the target
+        const distance = targetTimeOfDay - timeOfDay;
+        
+        // Apply easing - move faster in the middle of the transition, slower at endpoints
+        const easingFactor = Math.abs(distance) < 0.1 ? 0.5 : 
+                             Math.abs(distance) > 0.4 ? 0.5 : 1.0;
+        
+        // Apply the movement with easing
+        if (Math.abs(distance) < dayNightCycleSpeed) {
+            timeOfDay = targetTimeOfDay;
+        } else if (distance > 0) {
+            timeOfDay += dayNightCycleSpeed * easingFactor;
+        } else {
+            timeOfDay -= dayNightCycleSpeed * easingFactor;
+        }
+        
+        // Handle wrapping around (0.99 to 0.01 should be a small step, not a big one)
+        if (targetTimeOfDay === 0 && timeOfDay > 0.9) {
+            timeOfDay = 0;
+        }
+        if (targetTimeOfDay === 1 && timeOfDay < 0.1) {
+            timeOfDay = 1;
+        }
+    }
+    
+    // Clamp timeOfDay to valid range with wrapping
+    if (timeOfDay > 1) timeOfDay = timeOfDay - 1;
+    if (timeOfDay < 0) timeOfDay = timeOfDay + 1;
     
     // Calculate sun/moon position along an arc
     // We use a half circle for the path:
@@ -836,9 +879,22 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
     const sun = sunMoon.getAt(0) as Phaser.GameObjects.Image;
     const moon = sunMoon.getAt(1) as Phaser.GameObjects.Image;
     
-    // Toggle visibility based on day/night
-    sun.setVisible(!isNight);
-    moon.setVisible(isNight);
+    // Gradually fade between sun and moon rather than toggling
+    const sunAlpha = timeOfDay >= 0.5 ? 
+        Math.max(0, 1 - (timeOfDay - 0.5) * 5) : // Fade out sun as night approaches
+        timeOfDay < 0.2 ? 1 : Math.max(0, 1 - ((timeOfDay - 0.2) * 5)); // Full brightness until 0.2, then fade
+        
+    const moonAlpha = timeOfDay >= 0.7 ? 
+        Math.max(0, 1 - ((timeOfDay - 0.7) * 5)) : // Fade out moon as day approaches
+        timeOfDay >= 0.3 && timeOfDay < 0.5 ? 
+        Math.min(1, (timeOfDay - 0.3) * 5) : // Fade in moon as night approaches
+        timeOfDay >= 0.5 ? 1 : 0; // Full brightness during night
+    
+    // Set visibility and alpha for smoother transitions
+    sun.setVisible(sunAlpha > 0);
+    moon.setVisible(moonAlpha > 0);
+    sun.setAlpha(sunAlpha);
+    moon.setAlpha(moonAlpha);
     
     // Adjust size based on height (smaller at horizon, larger at zenith)
     const distanceFromHorizon = (y - centerY) / radius;
@@ -846,11 +902,11 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
     sun.setScale(scaleFactor);
     moon.setScale(scaleFactor * 0.8); // Moon slightly smaller
     
-    // Calculate sky color based on time of day
+    // Calculate sky color based on time of day with more gradual transitions
     let skyColor: number;
     let skyAlpha: number;
     
-    if (timeOfDay < 0.2) { // Morning
+    if (timeOfDay < 0.2) { // Morning - longer day period
         // Lerp from orange to blue (sunrise)
         const t = timeOfDay / 0.2;
         skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
@@ -860,10 +916,10 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
             Math.min(100, t * 100)
         ).color;
         skyAlpha = 0;
-    } else if (timeOfDay < 0.3) { // Moving into afternoon
+    } else if (timeOfDay < 0.3) { // Day
         skyColor = DAY_SKY_COLOR;
         skyAlpha = 0;
-    } else if (timeOfDay < 0.4) { // Late afternoon to sunset
+    } else if (timeOfDay < 0.4) { // Late afternoon to sunset - more gradual transition
         // Lerp from blue to orange (sunset beginning)
         const t = (timeOfDay - 0.3) / 0.1;
         skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
@@ -873,7 +929,7 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
             Math.min(100, t * 100)
         ).color;
         skyAlpha = t * 0.2; // Starting to darken
-    } else if (timeOfDay < 0.45) { // Sunset
+    } else if (timeOfDay < 0.45) { // Sunset - more gradual
         // Lerp from orange to dark blue (sunset to night)
         const t = (timeOfDay - 0.4) / 0.05;
         skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
@@ -889,7 +945,7 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
     } else if (timeOfDay < 0.65) { // Late night
         skyColor = NIGHT_SKY_COLOR;
         skyAlpha = 0.6;
-    } else if (timeOfDay < 0.7) { // Night to dawn
+    } else if (timeOfDay < 0.7) { // Night to dawn - more gradual
         // Lerp from dark blue to orange (dawn beginning)
         const t = (timeOfDay - 0.65) / 0.05;
         skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
@@ -899,7 +955,7 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
             Math.min(100, t * 100)
         ).color;
         skyAlpha = 0.6 - t * 0.4; // Starting to lighten
-    } else if (timeOfDay < 0.8) { // Dawn
+    } else if (timeOfDay < 0.8) { // Dawn - more gradual
         // Lerp from orange to blue (sunrise)
         const t = (timeOfDay - 0.7) / 0.1;
         skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
@@ -917,22 +973,29 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
     // Apply sky color and darkness
     skyOverlay.setFillStyle(skyColor, skyAlpha);
     
-    // Manage stars - only add stars during deep night (not during transition)
-    if (isNight && timeOfDay > 0.45 && timeOfDay < 0.65 && this.time.now > lastStarTime + 1000) {
-        // Stars visible at night - add a few stars occasionally
-        const numStars = Math.floor(Math.random() * 3) + 1;
-        stars.explode(numStars);
-        lastStarTime = this.time.now;
+    // Gradually add more stars as night deepens
+    const fullNightProgress = timeOfDay > 0.5 ? 
+        Math.min(1, Math.max(0, 1 - ((timeOfDay - 0.5) / 0.15))) : // Fade out after peak night
+        Math.min(1, Math.max(0, (timeOfDay - 0.35) / 0.15)); // Fade in as night approaches
+        
+    // Only add stars during deeper night, gradually increasing frequency
+    if (isNight && fullNightProgress > 0.3 && this.time.now > lastStarTime + (1000 / Math.max(0.3, fullNightProgress))) {
+        // Stars visible at night - add stars according to how deep into night we are
+        const maxStars = Math.floor(3 * fullNightProgress);
+        const numStars = maxStars > 0 ? Math.floor(Math.random() * maxStars) + 1 : 0;
+        
+        if (numStars > 0) {
+            stars.explode(numStars);
+            lastStarTime = this.time.now;
+        }
     }
     
-    // If approaching dawn or dusk, fade out existing stars
-    if ((timeOfDay > 0.65 && timeOfDay < 0.75) || (timeOfDay > 0.35 && timeOfDay < 0.45)) {
-        // Scale alpha of stars based on time (fade out as dawn approaches)
-        const starAlpha = timeOfDay > 0.5 ? 
-            Math.max(0, 1 - ((timeOfDay - 0.65) / 0.1)) : 
-            Math.max(0, 1 - ((0.45 - timeOfDay) / 0.1));
+    // Fade existing stars based on time of day for smooth transitions
+    const starVisibility = fullNightProgress;
+    if (starVisibility < 1) {
         stars.forEachAlive((star: Phaser.GameObjects.Particles.Particle) => {
-            star.alpha = star.alpha * starAlpha;
+            star.alpha = star.alpha * starVisibility;
+            if (starVisibility < 0.1) star.alpha = 0; // Fade out completely at transitions
         }, this);
     }
 }
