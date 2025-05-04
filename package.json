@@ -1,0 +1,29 @@
+{
+  "name": "flappy-mascot",
+  "version": "1.0.0",
+  "description": "A Flappy Bird clone featuring your mascot",
+  "main": "dist/bundle.js",
+  "scripts": {
+    "start": "webpack serve --mode development --open",
+    "build": "webpack --mode production",
+    "test": "ts-node src/test.ts",
+    "dev": "webpack serve --mode development",
+    "vercel-build": "webpack --mode production"
+  },
+  "keywords": ["game", "flappy-bird", "phaser"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "copy-webpack-plugin": "^11.0.0",
+    "phaser": "^3.70.0",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "webpack": "^5.90.1",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^4.15.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
