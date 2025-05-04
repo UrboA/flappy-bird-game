@@ -99,6 +99,13 @@ let windDownEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
 let lastWindEmitTime: number = 0;
 const WIND_EMIT_INTERVAL = 50; // milliseconds between wind emissions
 
+// Add pause-related variables
+let gamePaused: boolean = false;
+let pauseButton: Phaser.GameObjects.Container;
+let pauseOverlay: Phaser.GameObjects.Container;
+let previousPhysicsState: boolean = false; // Store physics state
+let previousTimeScale: number = 1; // Store time scale
+
 function playHitSound() {
     // Create audio context if it doesn't exist
     if (!audioContext) {
@@ -252,6 +259,44 @@ function preload(this: Phaser.Scene) {
     // Generate the wind texture
     windParticle.generateTexture('wind_particle', 12, 6);
     windParticle.clear();
+    
+    // Create pause button icon
+    const pauseButtonGraphics = this.add.graphics();
+    
+    // Draw pause button background (circle)
+    pauseButtonGraphics.fillStyle(0x000000, 0.6); // Semi-transparent black
+    pauseButtonGraphics.fillCircle(25, 25, 22);
+    pauseButtonGraphics.lineStyle(2, 0xFFFFFF, 1);
+    pauseButtonGraphics.strokeCircle(25, 25, 20);
+    
+    // Draw pause icon (two lines)
+    pauseButtonGraphics.fillStyle(0xFFFFFF, 1);
+    pauseButtonGraphics.fillRect(17, 15, 6, 20);
+    pauseButtonGraphics.fillRect(27, 15, 6, 20);
+    
+    pauseButtonGraphics.generateTexture('pauseButton', 50, 50);
+    pauseButtonGraphics.clear();
+    
+    // Draw play button for resume
+    const playButtonGraphics = this.add.graphics();
+    
+    // Draw play button background (circle)
+    playButtonGraphics.fillStyle(0x000000, 0.6);
+    playButtonGraphics.fillCircle(25, 25, 22);
+    playButtonGraphics.lineStyle(2, 0xFFFFFF, 1);
+    playButtonGraphics.strokeCircle(25, 25, 20);
+    
+    // Draw play triangle
+    playButtonGraphics.fillStyle(0xFFFFFF, 1);
+    playButtonGraphics.beginPath();
+    playButtonGraphics.moveTo(18, 15);
+    playButtonGraphics.lineTo(36, 25);
+    playButtonGraphics.lineTo(18, 35);
+    playButtonGraphics.closePath();
+    playButtonGraphics.fillPath();
+    
+    playButtonGraphics.generateTexture('playButton', 50, 50);
+    playButtonGraphics.clear();
 }
 
 function create(this: Phaser.Scene) {
@@ -631,6 +676,12 @@ function create(this: Phaser.Scene) {
         gravityY: -15 // More upward drift for dramatic effect
     });
     windEmitter.setDepth(19); // Just behind the bird
+
+    // After initializing all UI elements, create the pause button
+    createPauseButton.call(this);
+    
+    // Create pause overlay (initially hidden)
+    createPauseOverlay.call(this);
 }
 
 function createClouds(this: Phaser.Scene) {
@@ -715,7 +766,7 @@ function createBackgroundBirds(this: Phaser.Scene) {
 }
 
 function update(this: Phaser.Scene) {
-    if (!gameStarted || gameOver) return;
+    if (!gameStarted || gameOver || gamePaused) return; // Don't update if game is paused
 
     // Apply gravity to the bird manually
     if (bird.body && bird.body.enable) {
@@ -929,8 +980,10 @@ function startOrFlap(this: Phaser.Scene) {
 function startGame(this: Phaser.Scene) {
     console.log('Starting game');
     gameStarted = true;
+    gamePaused = false; // Ensure game starts unpaused
     startText.setVisible(false);
     scoreText.setVisible(true);
+    pauseButton.setVisible(true); // Show pause button when game starts
     lastPipeTime = this.time.now;
     
     // Enable physics for the bird
@@ -973,6 +1026,9 @@ function gameOverHandler(this: Phaser.Scene) {
     gameOver = true;
     this.physics.pause();
     
+    // Hide pause button when game is over
+    pauseButton.setVisible(false);
+    
     // Create explosion effect at bird position
     createExplosionEffect.call(this);
     
@@ -993,7 +1049,12 @@ function restartGame(this: Phaser.Scene) {
     // Reset game state
     gameOver = false;
     gameStarted = false;
+    gamePaused = false; // Ensure game restarts unpaused
     score = 0;
+    
+    // Make sure pause overlay is hidden
+    pauseOverlay.setVisible(false);
+    pauseButton.setVisible(false); // Hide pause button until game starts again
     
     // Reset bird position and physics
     bird.setPosition(BIRD_X, BIRD_START_Y);
@@ -1026,8 +1087,9 @@ function restartGame(this: Phaser.Scene) {
     // Reset confetti tracker
     lastConfettiScore = 0;
 
-    // Resume physics
-    this.physics.resume();
+    // Resume physics in case it was paused
+    this.physics.world.resume();
+    this.time.timeScale = 1;
 }
 
 function clearAllPipes() {
@@ -1325,6 +1387,107 @@ function createWindBurst(this: Phaser.Scene) {
     
     // Use the dedicated burst emitter with preset configurations
     windEmitter.explode(8, burstX, burstY);
+}
+
+function createPauseButton(this: Phaser.Scene) {
+    // Create pause button container
+    pauseButton = this.add.container(740, 60);
+    
+    // Add pause icon
+    const pauseIcon = this.add.image(0, 0, 'pauseButton');
+    pauseButton.add(pauseIcon);
+    
+    // Make it interactive
+    pauseIcon.setInteractive({ useHandCursor: true });
+    pauseIcon.on('pointerdown', togglePause, this);
+    
+    // Set high depth to appear above everything except pause overlay
+    pauseButton.setDepth(1500);
+    
+    // Initially hide the pause button until game starts
+    pauseButton.setVisible(false);
+}
+
+function createPauseOverlay(this: Phaser.Scene) {
+    // Create container for pause overlay elements
+    pauseOverlay = this.add.container(400, 300);
+    
+    // Create semi-transparent dark overlay
+    const overlay = this.add.rectangle(0, 0, 800, 600, 0x000000, 0.7);
+    
+    // Create "PAUSED" text
+    const pausedText = this.add.text(0, -50, 'PAUSED', {
+        fontSize: '48px',
+        color: '#fff',
+        stroke: '#000',
+        strokeThickness: 6,
+        align: 'center',
+        shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 2, stroke: true, fill: true }
+    }).setOrigin(0.5);
+    
+    // Create resume button
+    const resumeButton = this.add.image(0, 50, 'playButton');
+    resumeButton.setInteractive({ useHandCursor: true });
+    resumeButton.on('pointerdown', togglePause, this);
+    
+    // Resume text below button
+    const resumeText = this.add.text(0, 100, 'Resume', {
+        fontSize: '24px',
+        color: '#fff',
+        stroke: '#000',
+        strokeThickness: 4,
+        align: 'center'
+    }).setOrigin(0.5);
+    
+    // Add all elements to the container
+    pauseOverlay.add([overlay, pausedText, resumeButton, resumeText]);
+    
+    // Set extremely high depth to ensure it's above everything
+    pauseOverlay.setDepth(2000);
+    
+    // Initially hide the overlay
+    pauseOverlay.setVisible(false);
+}
+
+function togglePause(this: Phaser.Scene) {
+    if (!gameStarted || gameOver) return; // Don't pause if game hasn't started or is over
+    
+    gamePaused = !gamePaused;
+    
+    if (gamePaused) {
+        // Pause the game
+        previousPhysicsState = this.physics.world.isPaused;
+        previousTimeScale = this.time.timeScale;
+        
+        this.physics.world.pause();
+        this.time.timeScale = 0; // Freeze all time-based updates
+        
+        // Show pause overlay
+        pauseOverlay.setVisible(true);
+        
+        // Stop any ongoing audio
+        if (audioContext && audioContext.state === 'running') {
+            audioContext.suspend();
+        }
+        
+        console.log('Game paused');
+    } else {
+        // Resume the game
+        if (!previousPhysicsState) {
+            this.physics.world.resume();
+        }
+        this.time.timeScale = previousTimeScale;
+        
+        // Hide pause overlay
+        pauseOverlay.setVisible(false);
+        
+        // Resume audio
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+        
+        console.log('Game resumed');
+    }
 }
 
 // Start the game
