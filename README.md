@@ -34,4 +34,4 @@ npm start
 The game expects the following assets in the `src/assets` directory:
 - `mascot.png` - Your mascot sprite
 - `background.png` - A background image (800x600px recommended)
-- `pipe.png` - A pipe obstacle image (green rectangle) 
+- `pipe.png` - A pipe obstacle image (green rectangle)
