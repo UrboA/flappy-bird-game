@@ -108,7 +108,8 @@ let previousTimeScale: number = 1; // Store time scale
 
 // Add day-night cycle variables
 let timeOfDay: number = 0; // 0 to 1: 0 = noon, 0.5 = midnight, 1 = noon again
-let dayNightCycleSpeed: number = 0.0002; // How quickly the day/night cycle progresses
+let targetTimeOfDay: number = 0; // Target time of day based on score
+let dayNightCycleSpeed: number = 0.005; // How quickly the day/night cycle transitions (higher = faster)
 let sunMoon: Phaser.GameObjects.Container;
 let skyOverlay: Phaser.GameObjects.Rectangle;
 let stars: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -116,6 +117,7 @@ let lastStarTime: number = 0;
 const DAY_SKY_COLOR = 0x4DA6FF; // Bright blue
 const NIGHT_SKY_COLOR = 0x0A1A2A; // Deep blue
 const DUSK_SKY_COLOR = 0xFF7F50; // Orange-ish for sunset/sunrise
+const DAY_NIGHT_CYCLE_SCORE = 10; // Score threshold for day/night transition
 
 function playHitSound() {
     // Create audio context if it doesn't exist
@@ -779,6 +781,28 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
         timeOfDay = forcedTime;
     }
     
+    // Calculate target time of day based on score
+    // Score 0-9: Day (timeOfDay = 0.0)
+    // Score 10-19: Night (timeOfDay = 0.5)
+    // Score 20-29: Day (timeOfDay = 0.0)
+    // etc.
+    const cyclePosition = Math.floor(score / DAY_NIGHT_CYCLE_SCORE);
+    targetTimeOfDay = cyclePosition % 2 === 0 ? 0.0 : 0.5;
+    
+    // Gradually transition to target time of day
+    if (timeOfDay !== targetTimeOfDay) {
+        if (Math.abs(timeOfDay - targetTimeOfDay) < dayNightCycleSpeed) {
+            timeOfDay = targetTimeOfDay;
+        } else if (timeOfDay < targetTimeOfDay) {
+            timeOfDay += dayNightCycleSpeed;
+        } else {
+            timeOfDay -= dayNightCycleSpeed;
+        }
+    }
+    
+    // Clamp timeOfDay to valid range
+    timeOfDay = Math.max(0, Math.min(1, timeOfDay));
+    
     // Calculate sun/moon position along an arc
     // We use a half circle for the path:
     // - At timeOfDay = 0 (noon): sun at bottom of arc (visible)
@@ -893,18 +917,20 @@ function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
     // Apply sky color and darkness
     skyOverlay.setFillStyle(skyColor, skyAlpha);
     
-    // Manage stars
-    if (isNight && this.time.now > lastStarTime + 1000) {
+    // Manage stars - only add stars during deep night (not during transition)
+    if (isNight && timeOfDay > 0.45 && timeOfDay < 0.65 && this.time.now > lastStarTime + 1000) {
         // Stars visible at night - add a few stars occasionally
         const numStars = Math.floor(Math.random() * 3) + 1;
         stars.explode(numStars);
         lastStarTime = this.time.now;
     }
     
-    // If approaching dawn, fade out existing stars
-    if (timeOfDay > 0.65 && timeOfDay < 0.75) {
+    // If approaching dawn or dusk, fade out existing stars
+    if ((timeOfDay > 0.65 && timeOfDay < 0.75) || (timeOfDay > 0.35 && timeOfDay < 0.45)) {
         // Scale alpha of stars based on time (fade out as dawn approaches)
-        const starAlpha = Math.max(0, 1 - ((timeOfDay - 0.65) / 0.1));
+        const starAlpha = timeOfDay > 0.5 ? 
+            Math.max(0, 1 - ((timeOfDay - 0.65) / 0.1)) : 
+            Math.max(0, 1 - ((0.45 - timeOfDay) / 0.1));
         stars.forEachAlive((star: Phaser.GameObjects.Particles.Particle) => {
             star.alpha = star.alpha * starAlpha;
         }, this);
@@ -995,8 +1021,7 @@ function createBackgroundBirds(this: Phaser.Scene) {
 function update(this: Phaser.Scene) {
     if (!gameStarted || gameOver || gamePaused) return; // Don't update if game is paused
     
-    // Update time of day
-    timeOfDay = (timeOfDay + dayNightCycleSpeed) % 1;
+    // Update time of day - now based on score, not real time
     updateTimeOfDay.call(this);
     
     // Apply gravity to the bird manually
@@ -1282,6 +1307,16 @@ function restartGame(this: Phaser.Scene) {
     gameStarted = false;
     gamePaused = false; // Ensure game restarts unpaused
     score = 0;
+    
+    // Reset day/night cycle
+    timeOfDay = 0;
+    targetTimeOfDay = 0;
+    updateTimeOfDay.call(this, 0);
+    
+    // Clear any existing stars
+    stars.forEachAlive((star: Phaser.GameObjects.Particles.Particle) => {
+        star.kill();
+    }, this);
     
     // Make sure pause overlay is hidden
     pauseOverlay.setVisible(false);
