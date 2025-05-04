@@ -106,6 +106,17 @@ let pauseOverlay: Phaser.GameObjects.Container;
 let previousPhysicsState: boolean = false; // Store physics state
 let previousTimeScale: number = 1; // Store time scale
 
+// Add day-night cycle variables
+let timeOfDay: number = 0; // 0 to 1: 0 = noon, 0.5 = midnight, 1 = noon again
+let dayNightCycleSpeed: number = 0.0002; // How quickly the day/night cycle progresses
+let sunMoon: Phaser.GameObjects.Container;
+let skyOverlay: Phaser.GameObjects.Rectangle;
+let stars: Phaser.GameObjects.Particles.ParticleEmitter;
+let lastStarTime: number = 0;
+const DAY_SKY_COLOR = 0x4DA6FF; // Bright blue
+const NIGHT_SKY_COLOR = 0x0A1A2A; // Deep blue
+const DUSK_SKY_COLOR = 0xFF7F50; // Orange-ish for sunset/sunrise
+
 function playHitSound() {
     // Create audio context if it doesn't exist
     if (!audioContext) {
@@ -297,6 +308,45 @@ function preload(this: Phaser.Scene) {
     
     playButtonGraphics.generateTexture('playButton', 50, 50);
     playButtonGraphics.clear();
+    
+    // Create sun graphic
+    const sunGraphics = this.add.graphics();
+    sunGraphics.fillStyle(0xFFFF00, 1); // Yellow
+    sunGraphics.fillCircle(25, 25, 25);
+    
+    // Add some rays around the sun
+    sunGraphics.fillStyle(0xFFFF80, 0.7);
+    for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const x = 25 + Math.cos(angle) * 30;
+        const y = 25 + Math.sin(angle) * 30;
+        sunGraphics.fillCircle(x, y, 5);
+    }
+    
+    sunGraphics.generateTexture('sun', 50, 50);
+    sunGraphics.clear();
+    
+    // Create moon graphic
+    const moonGraphics = this.add.graphics();
+    moonGraphics.fillStyle(0xEEEEFF, 1); // Pale blue-white
+    moonGraphics.fillCircle(25, 25, 20);
+    
+    // Add some craters to the moon
+    moonGraphics.fillStyle(0xCCCCDD, 1);
+    moonGraphics.fillCircle(15, 20, 5);
+    moonGraphics.fillCircle(30, 15, 3);
+    moonGraphics.fillCircle(35, 30, 4);
+    moonGraphics.fillCircle(20, 35, 3);
+    
+    moonGraphics.generateTexture('moon', 50, 50);
+    moonGraphics.clear();
+    
+    // Create star particle
+    const starParticle = this.add.graphics();
+    starParticle.fillStyle(0xFFFFFF, 1);
+    starParticle.fillCircle(2, 2, 2);
+    starParticle.generateTexture('star', 4, 4);
+    starParticle.clear();
 }
 
 function create(this: Phaser.Scene) {
@@ -321,7 +371,7 @@ function create(this: Phaser.Scene) {
 
     // Create a custom background (blue sky only) instead of using the image
     const bgGraphics = this.add.graphics();
-    bgGraphics.fillStyle(0x4DA6FF, 1); // Blue sky color
+    bgGraphics.fillStyle(DAY_SKY_COLOR, 1); // Blue sky color
     bgGraphics.fillRect(0, 0, 800, 560); // Fill to exactly where the ground starts
     bgGraphics.generateTexture('customBackground', 800, 560);
     bgGraphics.clear();
@@ -329,7 +379,27 @@ function create(this: Phaser.Scene) {
     // Use our custom background with no light green
     background = this.add.tileSprite(400, 280, 800, 560, 'customBackground');
     background.setDepth(0); // Explicit depth for background (lowest)
-
+    
+    // Create sky overlay for transitioning between day and night
+    skyOverlay = this.add.rectangle(400, 280, 800, 560, 0x000000, 0);
+    skyOverlay.setDepth(1); // Just above background
+    
+    // Create stars particle emitter (initially not visible)
+    stars = this.add.particles(0, 0, 'star', {
+        x: { min: 0, max: 800 },
+        y: { min: 0, max: 400 },
+        lifespan: 20000,
+        quantity: 1,
+        frequency: -1, // Manual emission
+        scale: { start: 0.5, end: 1 },
+        alpha: { start: 0, end: 0.8, ease: 'Sine.easeIn' },
+        emitting: false
+    });
+    stars.setDepth(2); // Above sky overlay
+    
+    // Create sun/moon container
+    createCelestialObjects.call(this);
+    
     // Add pixel clouds in the background
     createClouds.call(this);
     
@@ -684,6 +754,163 @@ function create(this: Phaser.Scene) {
     createPauseOverlay.call(this);
 }
 
+function createCelestialObjects(this: Phaser.Scene) {
+    // Create container for sun/moon
+    sunMoon = this.add.container(400, 500);
+    
+    // Create sun and moon objects (we'll toggle visibility based on time)
+    const sun = this.add.image(0, 0, 'sun');
+    const moon = this.add.image(0, 0, 'moon');
+    
+    // Initially show sun, hide moon
+    moon.setVisible(false);
+    
+    // Add to container
+    sunMoon.add([sun, moon]);
+    sunMoon.setDepth(2); // Above sky but below clouds
+    
+    // Initial position
+    updateTimeOfDay.call(this, 0);
+}
+
+function updateTimeOfDay(this: Phaser.Scene, forcedTime: number | null = null) {
+    // If a specific time is forced, use it, otherwise just use current
+    if (forcedTime !== null) {
+        timeOfDay = forcedTime;
+    }
+    
+    // Calculate sun/moon position along an arc
+    // We use a half circle for the path:
+    // - At timeOfDay = 0 (noon): sun at bottom of arc (visible)
+    // - At timeOfDay = 0.5 (midnight): moon at bottom of arc (visible)
+    // - Arc spans from -PI to 0 (top half of circle)
+    
+    // Determine if it's day or night time
+    const isNight = timeOfDay >= 0.25 && timeOfDay < 0.75;
+    
+    // Get day/night-normalized time (0-1 within each half)
+    const normalizedTime = isNight ? 
+        (timeOfDay - 0.25) * 2 : // Night: 0.25-0.75 -> 0-1
+        timeOfDay < 0.25 ? 
+            (timeOfDay + 0.25) * 2 : // Morning: 0-0.25 -> 0.5-1
+            (timeOfDay - 0.75) * 2;  // Evening: 0.75-1 -> 0-0.5
+    
+    // Angle along the arc: PI to 0
+    const angle = Math.PI - normalizedTime * Math.PI;
+    
+    // Calculate position (center is at x=400, y=650, radius=450)
+    const centerX = 400;
+    const centerY = 650;
+    const radius = 450;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    
+    // Update sun/moon position
+    sunMoon.setPosition(x, y);
+    
+    // Get the sun and moon objects
+    const sun = sunMoon.getAt(0) as Phaser.GameObjects.Image;
+    const moon = sunMoon.getAt(1) as Phaser.GameObjects.Image;
+    
+    // Toggle visibility based on day/night
+    sun.setVisible(!isNight);
+    moon.setVisible(isNight);
+    
+    // Adjust size based on height (smaller at horizon, larger at zenith)
+    const distanceFromHorizon = (y - centerY) / radius;
+    const scaleFactor = 0.8 + 0.4 * Math.abs(distanceFromHorizon);
+    sun.setScale(scaleFactor);
+    moon.setScale(scaleFactor * 0.8); // Moon slightly smaller
+    
+    // Calculate sky color based on time of day
+    let skyColor: number;
+    let skyAlpha: number;
+    
+    if (timeOfDay < 0.2) { // Morning
+        // Lerp from orange to blue (sunrise)
+        const t = timeOfDay / 0.2;
+        skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+            new Phaser.Display.Color().setTo(255, 127, 80), // Orange-ish
+            new Phaser.Display.Color().setTo(77, 166, 255), // Blue
+            100,
+            Math.min(100, t * 100)
+        ).color;
+        skyAlpha = 0;
+    } else if (timeOfDay < 0.3) { // Moving into afternoon
+        skyColor = DAY_SKY_COLOR;
+        skyAlpha = 0;
+    } else if (timeOfDay < 0.4) { // Late afternoon to sunset
+        // Lerp from blue to orange (sunset beginning)
+        const t = (timeOfDay - 0.3) / 0.1;
+        skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+            new Phaser.Display.Color().setTo(77, 166, 255), // Blue
+            new Phaser.Display.Color().setTo(255, 127, 80), // Orange-ish
+            100,
+            Math.min(100, t * 100)
+        ).color;
+        skyAlpha = t * 0.2; // Starting to darken
+    } else if (timeOfDay < 0.45) { // Sunset
+        // Lerp from orange to dark blue (sunset to night)
+        const t = (timeOfDay - 0.4) / 0.05;
+        skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+            new Phaser.Display.Color().setTo(255, 127, 80), // Orange-ish
+            new Phaser.Display.Color().setTo(10, 26, 42), // Dark blue
+            100,
+            Math.min(100, t * 100)
+        ).color;
+        skyAlpha = 0.2 + t * 0.4; // Continue darkening
+    } else if (timeOfDay < 0.55) { // Full night
+        skyColor = NIGHT_SKY_COLOR;
+        skyAlpha = 0.6;
+    } else if (timeOfDay < 0.65) { // Late night
+        skyColor = NIGHT_SKY_COLOR;
+        skyAlpha = 0.6;
+    } else if (timeOfDay < 0.7) { // Night to dawn
+        // Lerp from dark blue to orange (dawn beginning)
+        const t = (timeOfDay - 0.65) / 0.05;
+        skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+            new Phaser.Display.Color().setTo(10, 26, 42), // Dark blue
+            new Phaser.Display.Color().setTo(255, 127, 80), // Orange-ish
+            100,
+            Math.min(100, t * 100)
+        ).color;
+        skyAlpha = 0.6 - t * 0.4; // Starting to lighten
+    } else if (timeOfDay < 0.8) { // Dawn
+        // Lerp from orange to blue (sunrise)
+        const t = (timeOfDay - 0.7) / 0.1;
+        skyColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+            new Phaser.Display.Color().setTo(255, 127, 80), // Orange-ish
+            new Phaser.Display.Color().setTo(77, 166, 255), // Blue
+            100,
+            Math.min(100, t * 100)
+        ).color;
+        skyAlpha = 0.2 - t * 0.2; // Continue lightening
+    } else { // Late morning
+        skyColor = DAY_SKY_COLOR;
+        skyAlpha = 0;
+    }
+    
+    // Apply sky color and darkness
+    skyOverlay.setFillStyle(skyColor, skyAlpha);
+    
+    // Manage stars
+    if (isNight && this.time.now > lastStarTime + 1000) {
+        // Stars visible at night - add a few stars occasionally
+        const numStars = Math.floor(Math.random() * 3) + 1;
+        stars.explode(numStars);
+        lastStarTime = this.time.now;
+    }
+    
+    // If approaching dawn, fade out existing stars
+    if (timeOfDay > 0.65 && timeOfDay < 0.75) {
+        // Scale alpha of stars based on time (fade out as dawn approaches)
+        const starAlpha = Math.max(0, 1 - ((timeOfDay - 0.65) / 0.1));
+        stars.forEachAlive((star: Phaser.GameObjects.Particles.Particle) => {
+            star.alpha = star.alpha * starAlpha;
+        }, this);
+    }
+}
+
 function createClouds(this: Phaser.Scene) {
     // Clear any existing clouds
     clouds.forEach(cloud => cloud.destroy());
@@ -767,7 +994,11 @@ function createBackgroundBirds(this: Phaser.Scene) {
 
 function update(this: Phaser.Scene) {
     if (!gameStarted || gameOver || gamePaused) return; // Don't update if game is paused
-
+    
+    // Update time of day
+    timeOfDay = (timeOfDay + dayNightCycleSpeed) % 1;
+    updateTimeOfDay.call(this);
+    
     // Apply gravity to the bird manually
     if (bird.body && bird.body.enable) {
         bird.body.velocity.y += BIRD_GRAVITY;
