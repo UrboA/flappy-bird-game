@@ -92,6 +92,13 @@ let lastGapY = 300; // Start in the middle
 let clouds: Phaser.GameObjects.Image[] = [];
 let backgroundBirds: Phaser.GameObjects.Sprite[] = [];
 
+// Add a variable for wind trail effect
+let windEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
+let windUpEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
+let windDownEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
+let lastWindEmitTime: number = 0;
+const WIND_EMIT_INTERVAL = 50; // milliseconds between wind emissions
+
 function playHitSound() {
     // Create audio context if it doesn't exist
     if (!audioContext) {
@@ -226,6 +233,25 @@ function preload(this: Phaser.Scene) {
     glowParticle.fillCircle(16, 16, 16);
     glowParticle.generateTexture('glow', 32, 32);
     glowParticle.clear();
+    
+    // Create wind particle effect
+    const windParticle = this.add.graphics();
+    
+    // Create a wind streak shape
+    windParticle.fillStyle(0xFFFFFF, 1); // White base
+    
+    // Draw an elongated shape for wind streak
+    windParticle.beginPath();
+    windParticle.moveTo(0, 3);
+    windParticle.lineTo(12, 0);
+    windParticle.lineTo(12, 6);
+    windParticle.lineTo(0, 3);
+    windParticle.closePath();
+    windParticle.fillPath();
+    
+    // Generate the wind texture
+    windParticle.generateTexture('wind_particle', 12, 6);
+    windParticle.clear();
 }
 
 function create(this: Phaser.Scene) {
@@ -555,6 +581,56 @@ function create(this: Phaser.Scene) {
         rotate: { min: 0, max: 360 }
     });
     explosionEmitter.setDepth(25); // Just above the bird
+
+    // Initialize wind trail emitters with different configurations
+    
+    // Wind emitter for flapping upward
+    windUpEmitter = this.add.particles(0, 0, 'wind_particle', {
+        x: 0,
+        y: 0,
+        lifespan: { min: 300, max: 500 },
+        speed: { min: 50, max: 100 },
+        angle: { min: 150, max: 210 }, // Emit roughly to the left
+        scale: { start: 1.0, end: 0 },
+        alpha: { start: 0.7, end: 0 },
+        tint: [0xFFFFFF, 0xE0E0FF, 0xADD8E6], // White/light blue tints
+        frequency: -1, // Manual emission
+        blendMode: 'ADD',
+        gravityY: -10 // Slight upward drift
+    });
+    windUpEmitter.setDepth(19); // Just behind the bird
+    
+    // Wind emitter for falling downward
+    windDownEmitter = this.add.particles(0, 0, 'wind_particle', {
+        x: 0,
+        y: 0,
+        lifespan: { min: 200, max: 400 },
+        speed: { min: 30, max: 60 },
+        angle: { min: 160, max: 200 }, // Emit roughly to the left
+        scale: { start: 0.6, end: 0 },
+        alpha: { start: 0.4, end: 0 },
+        tint: [0xFFFFFF, 0xE0E0FF], 
+        frequency: -1, // Manual emission
+        blendMode: 'ADD',
+        gravityY: 0 // No vertical drift
+    });
+    windDownEmitter.setDepth(19); // Just behind the bird
+    
+    // General wind burst emitter for flap action
+    windEmitter = this.add.particles(0, 0, 'wind_particle', {
+        x: 0,
+        y: 0,
+        lifespan: { min: 300, max: 600 },
+        speed: { min: 60, max: 120 },
+        angle: { min: 140, max: 220 }, // Wider angle for burst
+        scale: { start: 1.2, end: 0 },
+        alpha: { start: 0.8, end: 0 },
+        tint: [0xFFFFFF, 0xE0E0FF, 0xADD8E6], // White/light blue tints
+        frequency: -1, // Manual emission
+        blendMode: 'ADD',
+        gravityY: -15 // More upward drift for dramatic effect
+    });
+    windEmitter.setDepth(19); // Just behind the bird
 }
 
 function createClouds(this: Phaser.Scene) {
@@ -773,6 +849,28 @@ function update(this: Phaser.Scene) {
     pipesToRemove.forEach(pipe => {
         pipe.destroy();
     });
+
+    // Add continuous subtle wind trail behind bird when in motion
+    if (bird.body && bird.body.velocity.y !== 0 && this.time.now > lastWindEmitTime + WIND_EMIT_INTERVAL) {
+        // Position slightly behind the bird
+        const trailX = bird.x - 10; 
+        const trailY = bird.y + 2;
+        
+        // Adjust particle count based on bird velocity
+        const velocityFactor = Math.min(Math.abs(bird.body.velocity.y) / 300, 1);
+        const particleCount = Math.floor(3 + velocityFactor * 3); // 3-6 particles based on speed
+        
+        // Different emitters based on if bird is going up or down
+        if (bird.body.velocity.y < 0) {
+            // Going up - use the stronger upward emitter
+            windUpEmitter.explode(particleCount, trailX, trailY);
+        } else {
+            // Going down - use the subtler downward emitter
+            windDownEmitter.explode(particleCount, trailX, trailY);
+        }
+        
+        lastWindEmitTime = this.time.now;
+    }
 }
 
 function updateClouds(pipeMove: number) {
@@ -864,6 +962,9 @@ function flap(this: Phaser.Scene) {
     } else {
         bird.setVelocityY(BIRD_FLAP_VELOCITY);
     }
+    
+    // Create a burst of wind particles when flapping
+    createWindBurst.call(this);
 }
 
 function gameOverHandler(this: Phaser.Scene) {
@@ -1214,6 +1315,16 @@ function createExplosionEffect(this: Phaser.Scene) {
     
     // Add screen shake effect
     this.cameras.main.shake(300, 0.01);
+}
+
+// Add a new function for creating wind burst
+function createWindBurst(this: Phaser.Scene) {
+    // Position wind burst behind the bird
+    const burstX = bird.x - 15;
+    const burstY = bird.y + 2;
+    
+    // Use the dedicated burst emitter with preset configurations
+    windEmitter.explode(8, burstX, burstY);
 }
 
 // Start the game
