@@ -169,7 +169,7 @@ function preload(this: Phaser.Scene) {
     console.log('Preloading assets...');
     this.load.image('background', 'assets/background.svg');
     this.load.image('bird', 'assets/mascot.png');
-    this.load.image('pipe', 'assets/flappybirdpipe.png');
+    this.load.image('pipe', 'assets/newflappybirdpipe.png');
     this.load.image('pixelcloud', 'assets/pixelcloud.webp');
     
     // Create little bird sprites for background
