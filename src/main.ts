@@ -1399,7 +1399,13 @@ function createPauseButton(this: Phaser.Scene) {
     
     // Make it interactive
     pauseIcon.setInteractive({ useHandCursor: true });
-    pauseIcon.on('pointerdown', togglePause, this);
+    
+    // Stop event propagation to prevent unwanted flapping
+    pauseIcon.on('pointerdown', function(this: Phaser.Scene, pointer: Phaser.Input.Pointer) {
+        // Stop event propagation
+        pointer.event.stopPropagation();
+        togglePause.call(this);
+    }, this);
     
     // Set high depth to appear above everything except pause overlay
     pauseButton.setDepth(1500);
@@ -1428,7 +1434,13 @@ function createPauseOverlay(this: Phaser.Scene) {
     // Create resume button
     const resumeButton = this.add.image(0, 50, 'playButton');
     resumeButton.setInteractive({ useHandCursor: true });
-    resumeButton.on('pointerdown', togglePause, this);
+    
+    // Stop event propagation to prevent unwanted flapping
+    resumeButton.on('pointerdown', function(this: Phaser.Scene, pointer: Phaser.Input.Pointer) {
+        // Stop event propagation
+        pointer.event.stopPropagation();
+        togglePause.call(this);
+    }, this);
     
     // Resume text below button
     const resumeText = this.add.text(0, 100, 'Resume', {
@@ -1438,6 +1450,9 @@ function createPauseOverlay(this: Phaser.Scene) {
         strokeThickness: 4,
         align: 'center'
     }).setOrigin(0.5);
+    
+    // Also make the overlay click-proof to prevent input passing through
+    overlay.setInteractive();
     
     // Add all elements to the container
     pauseOverlay.add([overlay, pausedText, resumeButton, resumeText]);
@@ -1465,6 +1480,12 @@ function togglePause(this: Phaser.Scene) {
         // Show pause overlay
         pauseOverlay.setVisible(true);
         
+        // Temporarily disable input events for the scene to prevent flapping
+        this.input.off('pointerdown', startOrFlap, this);
+        if (this.input.keyboard && spaceKey) {
+            spaceKey.off('down', startOrFlap, this);
+        }
+        
         // Stop any ongoing audio
         if (audioContext && audioContext.state === 'running') {
             audioContext.suspend();
@@ -1480,6 +1501,12 @@ function togglePause(this: Phaser.Scene) {
         
         // Hide pause overlay
         pauseOverlay.setVisible(false);
+        
+        // Re-enable input events for the scene
+        this.input.on('pointerdown', startOrFlap, this);
+        if (this.input.keyboard && spaceKey) {
+            spaceKey.on('down', startOrFlap, this);
+        }
         
         // Resume audio
         if (audioContext && audioContext.state === 'suspended') {
