@@ -119,12 +119,6 @@ const NIGHT_SKY_COLOR = 0x0A1A2A; // Deep blue
 const DUSK_SKY_COLOR = 0xFF7F50; // Orange-ish for sunset/sunrise
 const DAY_NIGHT_CYCLE_SCORE = 10; // Score threshold for day/night transition
 
-// At the top of the file where variables are declared (around line 36-50)
-let scoreDisplay: Phaser.GameObjects.Container;
-let scoreBackground: Phaser.GameObjects.Rectangle;
-let scoreValue: Phaser.GameObjects.Text;
-let scoreLabel: Phaser.GameObjects.Text;
-
 function playHitSound() {
     // Create audio context if it doesn't exist
     if (!audioContext) {
@@ -603,39 +597,16 @@ function create(this: Phaser.Scene) {
     // Store the grass top Y position for manual collision checks
     this.registry.set('grassTopY', grassTopY);
     
-    // Modern score display container
-    scoreDisplay = this.add.container(400, 50);
-    scoreDisplay.setDepth(1000);
-    scoreDisplay.setVisible(false);
-
-    // Score background - sleek rounded rectangle with forest green theme
-    scoreBackground = this.add.rectangle(0, 0, 150, 60, 0x2A5A16, 0.8);
-    scoreBackground.setStrokeStyle(2, 0x88D631, 0.8);
-
-    // Score label in modern sans-serif font
-    scoreLabel = this.add.text(-50, -12, 'SCORE', {
-        fontFamily: 'Arial, sans-serif',
-        fontSize: '18px',
-        color: '#AAFF66',
-        fontStyle: 'bold'
-    }).setOrigin(0, 0.5);
-
-    // Score value in modern large font
-    scoreValue = this.add.text(0, 15, '0', {
-        fontFamily: 'Arial, sans-serif',
+    // Score text
+    scoreText = this.add.text(400, 50, 'Score: 0', {
         fontSize: '32px',
-        color: '#FFFFFF',
-        fontStyle: 'bold'
-    }).setOrigin(0.5, 0.5);
-
-    // Add all elements to the container
-    scoreDisplay.add([scoreBackground, scoreLabel, scoreValue]);
-
-    // Keep the original scoreText variable for compatibility with existing code
-    // but make it invisible - we'll update both
-    scoreText = this.add.text(0, 0, 'Score: 0', { fontSize: '0px' });
+        color: '#fff',
+        stroke: '#000',
+        strokeThickness: 6,
+        shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 2, stroke: true, fill: true }
+    }).setOrigin(0.5);
     scoreText.setVisible(false);
-    scoreText.setDepth(1000);
+    scoreText.setDepth(1000); // Ensure text appears above everything
 
     // Start screen text
     startText = this.add.text(400, 250, 'Click or Press Space\nto Start', {
@@ -1235,11 +1206,6 @@ function update(this: Phaser.Scene) {
             scoredPairs.add(pairId);
             score++;
             scoreText.setText('Score: ' + score);
-            scoreValue.setText(score.toString());
-            // Adapt width based on score length
-            const newWidth = Math.max(150, 100 + score.toString().length * 20);
-            scoreBackground.width = newWidth;
-            scoreLabel.x = -newWidth/2 + 20;
             
             // Celebrate with confetti when score is divisible by 5
             if (score > 0 && score % 5 === 0 && score !== lastConfettiScore) {
@@ -1335,7 +1301,7 @@ function startGame(this: Phaser.Scene) {
     gameStarted = true;
     gamePaused = false; // Ensure game starts unpaused
     startText.setVisible(false);
-    scoreDisplay.setVisible(true);
+    scoreText.setVisible(true);
     pauseButton.setVisible(true); // Show pause button when game starts
     lastPipeTime = this.time.now;
     
@@ -1395,7 +1361,7 @@ function gameOverHandler(this: Phaser.Scene) {
     gameOverText.setText(`Game Over!\nScore: ${score}`);
     
     restartText.setVisible(true);
-    scoreDisplay.setVisible(false);
+    scoreText.setVisible(false);
 }
 
 function restartGame(this: Phaser.Scene) {
@@ -1436,10 +1402,7 @@ function restartGame(this: Phaser.Scene) {
     restartText.setVisible(false);
     startText.setVisible(true);
     scoreText.setText('Score: 0');
-    scoreValue.setText('0');
-    scoreDisplay.setVisible(false);
-    scoreBackground.width = 150;
-    scoreLabel.x = -55;
+    scoreText.setVisible(false);
 
     // Clear all existing pipes
     clearAllPipes();
