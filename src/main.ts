@@ -61,9 +61,9 @@ let isMobileDevice: boolean = false;
 // Game constants
 const PIPE_WIDTH = 80; // Narrower pipes like original flappy bird
 const PIPE_HEIGHT = 320; // Height of the pipe segment
-const PIPE_GAP = 180; // Increased gap between top and bottom pipes for easier passage
+const PIPE_GAP = 150; // Reduced from 180 for more challenge
 const PIPE_SPAWN_DISTANCE = 300; // Distance between pipe pairs
-const PIPE_SPEED = 160; // Moderate speed
+const PIPE_SPEED = 180; // Increased from 160 for faster pipes
 // Adjusted gap position limits to prevent zero-height textures
 // Moved MIN_PIPE_Y up to ensure the top pipe always has height
 const MIN_PIPE_Y = 150; // Increased from 120 to ensure top pipe has good height 
@@ -71,10 +71,10 @@ const MIN_PIPE_Y = 150; // Increased from 120 to ensure top pipe has good height
 const MAX_PIPE_Y = 450; // Reduced from 480 to ensure bottom pipe has good height
 const BIRD_X = 200; // Fixed horizontal position of bird
 const BIRD_START_Y = 300;
-const BIRD_FLAP_VELOCITY = -350; // Reduced from -550 for more controlled jumps
+const BIRD_FLAP_VELOCITY = -380; // Slightly increased from -350 for better control
 const MOBILE_FLAP_VELOCITY = -320; // Reduced from -400, closer to desktop for consistency
-const BIRD_GRAVITY = 15; // Reduced from 18 for slightly slower falling
-const BIRD_MAX_FALL_SPEED = 400; // Reduced from 450 for more controlled falling
+const BIRD_GRAVITY = 18; // Increased from 15 for faster falling
+const BIRD_MAX_FALL_SPEED = 450; // Increased from 400 for faster max fall speed
 const BIRD_HITBOX_SIZE = 28; // Reduced hitbox size for more precise collision detection
 const BIRD_VISUAL_SIZE = 35; // Visual size of bird for debugging
 const BIRD_HITBOX_HALF = BIRD_HITBOX_SIZE / 2; // Half size for centered calculations
