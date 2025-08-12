@@ -71,10 +71,10 @@ const MIN_PIPE_Y = 150; // Increased from 120 to ensure top pipe has good height
 const MAX_PIPE_Y = 450; // Reduced from 480 to ensure bottom pipe has good height
 const BIRD_X = 200; // Fixed horizontal position of bird
 const BIRD_START_Y = 300;
-const BIRD_FLAP_VELOCITY = -550; // Default for desktop
-const MOBILE_FLAP_VELOCITY = -400; // Gentler jump for mobile
-const BIRD_GRAVITY = 18; // Reduced from 25 for slightly slower falling
-const BIRD_MAX_FALL_SPEED = 450; // Reduced from 500 for slightly slower max speed
+const BIRD_FLAP_VELOCITY = -350; // Reduced from -550 for more controlled jumps
+const MOBILE_FLAP_VELOCITY = -320; // Reduced from -400, closer to desktop for consistency
+const BIRD_GRAVITY = 15; // Reduced from 18 for slightly slower falling
+const BIRD_MAX_FALL_SPEED = 400; // Reduced from 450 for more controlled falling
 const BIRD_HITBOX_SIZE = 28; // Reduced hitbox size for more precise collision detection
 const BIRD_VISUAL_SIZE = 35; // Visual size of bird for debugging
 const BIRD_HITBOX_HALF = BIRD_HITBOX_SIZE / 2; // Half size for centered calculations
@@ -1328,12 +1328,8 @@ function startGame(this: Phaser.Scene) {
 }
 
 function flap(this: Phaser.Scene) {
-    // Use different velocity for mobile devices
-    if (isMobileDevice) {
-        bird.setVelocityY(MOBILE_FLAP_VELOCITY);
-    } else {
-        bird.setVelocityY(BIRD_FLAP_VELOCITY);
-    }
+    // Use consistent velocity for all devices to ensure uniform experience
+    bird.setVelocityY(BIRD_FLAP_VELOCITY);
     
     // Create a burst of wind particles when flapping
     createWindBurst.call(this);
