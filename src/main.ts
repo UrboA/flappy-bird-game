@@ -71,8 +71,7 @@ const MIN_PIPE_Y = 150; // Increased from 120 to ensure top pipe has good height
 const MAX_PIPE_Y = 450; // Reduced from 480 to ensure bottom pipe has good height
 const BIRD_X = 200; // Fixed horizontal position of bird
 const BIRD_START_Y = 300;
-        const BIRD_FLAP_VELOCITY = -420; // Increased from -380 for more natural jump feel
-        const MOBILE_FLAP_VELOCITY = -420; // Same as desktop for consistency
+		const BIRD_FLAP_VELOCITY = -450; // Increased slightly and unified across devices
 const BIRD_GRAVITY = 18; // Increased from 15 for faster falling
 const BIRD_MAX_FALL_SPEED = 450; // Increased from 400 for faster max fall speed
 const BIRD_HITBOX_SIZE = 28; // Reduced hitbox size for more precise collision detection
@@ -1087,9 +1086,12 @@ function update(this: Phaser.Scene) {
     // Update time of day - now based on score, not real time
     updateTimeOfDay.call(this);
     
+    // Normalize to 60fps for consistent physics across devices
+    const deltaFactor = this.game.loop.delta / (1000 / 60);
+    
     // Apply gravity to the bird manually
     if (bird.body && bird.body.enable) {
-        bird.body.velocity.y += BIRD_GRAVITY;
+        bird.body.velocity.y += BIRD_GRAVITY * deltaFactor;
         
         // Cap maximum falling speed
         if (bird.body.velocity.y > BIRD_MAX_FALL_SPEED) {
@@ -1109,7 +1111,6 @@ function update(this: Phaser.Scene) {
     }
 
     // Calculate movement per frame based on time delta for consistent movement regardless of frame rate
-    const deltaFactor = this.game.loop.delta / (1000 / 60); // Normalize to 60fps
     const pipeMove = PIPE_SPEED * deltaFactor;
     const backgroundMove = pipeMove * BACKGROUND_SPEED_RATIO; // Background moves very slowly
 
