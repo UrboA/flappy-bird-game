@@ -429,6 +429,8 @@ function create(this: Phaser.Scene) {
         gravityY: 0 // Ensure zero gravity for pipes
     });
 
+    // We will handle precise collision manually using rotated hitbox checks
+
     // Reset scored pairs and pipe tracking
     scoredPairs = new Set();
     existingPairIds = new Set();
@@ -1174,29 +1176,9 @@ function update(this: Phaser.Scene) {
             return; // Skip further checks for off-screen pipes
         }
         
-        // Enhanced collision detection with increased sensitivity
-        const birdRect = new Phaser.Geom.Rectangle(
-            bird.x - BIRD_HITBOX_HALF + 2, // Slightly smaller bird hitbox for more precise collisions
-            bird.y - BIRD_HITBOX_HALF + 2, // Add small offset to make the hitbox more centered on the visible bird
-            BIRD_HITBOX_SIZE - 4,  // Smaller hitbox for more accurate collisions
-            BIRD_HITBOX_SIZE - 4
-        );
-        
-        // Get pipe bounds and expand them slightly for more sensitive collision
-        const pipeBounds = pipe.getBounds();
-        // Expand pipe bounds for more sensitive detection
-        const expandedPipeBounds = new Phaser.Geom.Rectangle(
-            pipeBounds.x - PIPE_COLLISION_BUFFER, 
-            pipeBounds.y - PIPE_COLLISION_BUFFER, 
-            pipeBounds.width + (PIPE_COLLISION_BUFFER * 2), 
-            pipeBounds.height + (PIPE_COLLISION_BUFFER * 2)
-        );
-        
-        // Check collision using more sensitive detection with expanded pipe bounds
-        if (Phaser.Geom.Intersects.RectangleToRectangle(birdRect, expandedPipeBounds)) {
-            console.log('Collision detected at coordinates:', 
-                        'Bird:[' + bird.x + ',' + bird.y + ']', 
-                        'Pipe:[' + pipe.x + ',' + pipe.y + ']');
+        // Pixel-perfect collision check for more accurate hits
+        if (isPixelPerfectCollision(bird, pipe)) {
+            console.log('Pixel-perfect collision at:', 'Bird:[' + bird.x + ',' + bird.y + ']', 'Pipe:[' + pipe.x + ',' + pipe.y + ']');
             gameOverHandler.call(this);
             return;
         }
@@ -1283,6 +1265,81 @@ function updateBackgroundBirds(time: number, pipeMove: number) {
             bird.y = newY;
         }
     });
+}
+
+// Pixel-perfect collision between the rotated bird sprite and a pipe image
+function isPixelPerfectCollision(
+    birdSprite: Phaser.GameObjects.Sprite,
+    pipeImage: Phaser.GameObjects.Image
+): boolean {
+    const birdBounds = birdSprite.getBounds();
+    const pipeBounds = pipeImage.getBounds();
+    if (!Phaser.Geom.Intersects.RectangleToRectangle(birdBounds, pipeBounds)) {
+        return false;
+    }
+
+    const intersection = Phaser.Geom.Rectangle.Intersection(birdBounds, pipeBounds);
+    if (intersection.width <= 0 || intersection.height <= 0) return false;
+
+    const step = 1; // pixel step for accuracy
+    const angle = birdSprite.rotation;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    const birdFrame = birdSprite.frame;
+    const pipeFrame = pipeImage.frame;
+    const birdTexW = birdFrame.width;
+    const birdTexH = birdFrame.height;
+    const pipeTexW = pipeFrame.width;
+    const pipeTexH = pipeFrame.height;
+
+    // Precompute pipe top-left in world for origin mapping
+    const pipeTopLeftX = pipeImage.x - pipeImage.displayOriginX;
+    const pipeTopLeftY = pipeImage.y - pipeImage.displayOriginY;
+
+    for (let y = Math.floor(intersection.top); y < Math.ceil(intersection.bottom); y += step) {
+        for (let x = Math.floor(intersection.left); x < Math.ceil(intersection.right); x += step) {
+            // World -> bird texture space (account for rotation, scale, origin)
+            const dx = x - birdSprite.x;
+            const dy = y - birdSprite.y;
+            // Inverse rotation
+            const localX = dx * cos + dy * sin;
+            const localY = -dx * sin + dy * cos;
+            // Undo scale and shift by origin in texture pixels
+            const birdTexX = (localX / birdSprite.scaleX) + birdSprite.originX * birdTexW;
+            const birdTexY = (localY / birdSprite.scaleY) + birdSprite.originY * birdTexH;
+
+            if (birdTexX < 0 || birdTexY < 0 || birdTexX >= birdTexW || birdTexY >= birdTexH) {
+                continue;
+            }
+
+            // World -> pipe texture space (pipes are not rotated)
+            const pipeTexX = (x - pipeTopLeftX) / pipeImage.scaleX;
+            const pipeTexY = (y - pipeTopLeftY) / pipeImage.scaleY;
+            if (pipeTexX < 0 || pipeTexY < 0 || pipeTexX >= pipeTexW || pipeTexY >= pipeTexH) {
+                continue;
+            }
+
+            const birdAlpha = birdSprite.scene.textures.getPixelAlpha(
+                birdTexX | 0,
+                birdTexY | 0,
+                birdSprite.texture.key,
+                (birdSprite.frame && birdSprite.frame.name) as any
+            );
+            const pipeAlpha = pipeImage.scene.textures.getPixelAlpha(
+                pipeTexX | 0,
+                pipeTexY | 0,
+                pipeImage.texture.key,
+                (pipeImage.frame && pipeImage.frame.name) as any
+            );
+            // Treat any reasonably opaque pixel as solid
+            if (birdAlpha > 10 && pipeAlpha > 10) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 function startOrFlap(this: Phaser.Scene) {
