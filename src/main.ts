@@ -54,6 +54,7 @@ let groundSprite: Phaser.GameObjects.TileSprite;
 let confettiEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
 let lastConfettiScore: number = 0;
 let explosionEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
+let trailEmitter: Phaser.GameObjects.Particles.ParticleEmitter;
 
 // Add a device detection variable
 let isMobileDevice: boolean = false;
@@ -271,6 +272,19 @@ function preload(this: Phaser.Scene) {
     // Generate the wind texture
     windParticle.generateTexture('wind_particle', 12, 6);
     windParticle.clear();
+    
+    // Create a soft radial gradient particle for subtle trail
+    const trailGfx = this.add.graphics();
+    const size = 24;
+    const center = size / 2;
+    for (let i = 0; i < 8; i++) {
+        const radius = center - i * 1.5;
+        const alpha = 0.10 * (8 - i) / 8; // softer outer ring
+        trailGfx.fillStyle(0xFFFFFF, alpha);
+        trailGfx.fillCircle(center, center, Math.max(1, radius));
+    }
+    trailGfx.generateTexture('trail_particle', size, size);
+    trailGfx.clear();
     
     // Create pause button icon
     const pauseButtonGraphics = this.add.graphics();
@@ -749,6 +763,23 @@ function create(this: Phaser.Scene) {
         gravityY: -15 // More upward drift for dramatic effect
     });
     windEmitter.setDepth(19); // Just behind the bird
+    
+    // Smooth, subtle trail that follows the bird
+    trailEmitter = this.add.particles(0, 0, 'trail_particle', {
+        x: 0,
+        y: 0,
+        lifespan: { min: 350, max: 700 },
+        speed: { min: 8, max: 18 },
+        angle: { min: 160, max: 200 },
+        scale: { start: 0.55, end: 0 },
+        alpha: { start: 0.22, end: 0 },
+        quantity: 1,
+        frequency: 45,
+        emitting: false,
+        blendMode: 'ADD',
+        gravityY: -6
+    });
+    trailEmitter.setDepth(18); // Behind bird, above pipes
 
     // After initializing all UI elements, create the pause button
     createPauseButton.call(this);
@@ -1203,26 +1234,9 @@ function update(this: Phaser.Scene) {
         pipe.destroy();
     });
 
-    // Add continuous subtle wind trail behind bird when in motion
-    if (bird.body && bird.body.velocity.y !== 0 && this.time.now > lastWindEmitTime + WIND_EMIT_INTERVAL) {
-        // Position slightly behind the bird
-        const trailX = bird.x - 10; 
-        const trailY = bird.y + 2;
-        
-        // Adjust particle count based on bird velocity
-        const velocityFactor = Math.min(Math.abs(bird.body.velocity.y) / 300, 1);
-        const particleCount = Math.floor(3 + velocityFactor * 3); // 3-6 particles based on speed
-        
-        // Different emitters based on if bird is going up or down
-        if (bird.body.velocity.y < 0) {
-            // Going up - use the stronger upward emitter
-            windUpEmitter.explode(particleCount, trailX, trailY);
-        } else {
-            // Going down - use the subtler downward emitter
-            windDownEmitter.explode(particleCount, trailX, trailY);
-        }
-        
-        lastWindEmitTime = this.time.now;
+    // Update the smooth trail emitter to follow the bird
+    if (trailEmitter && bird.active) {
+        trailEmitter.setPosition(bird.x - 10, bird.y + 2);
     }
 }
 
@@ -1383,6 +1397,12 @@ function startGame(this: Phaser.Scene) {
     // Clear any existing pipes and generate the first one
     clearAllPipes();
     generatePipe.call(this);
+
+    // Begin trail emission when the game starts
+    if (trailEmitter) {
+        trailEmitter.start();
+        trailEmitter.setPosition(bird.x - 10, bird.y + 2);
+    }
 }
 
 function flap(this: Phaser.Scene) {
@@ -1404,6 +1424,11 @@ function gameOverHandler(this: Phaser.Scene) {
     
     // Create explosion effect at bird position
     createExplosionEffect.call(this);
+    
+    // Stop trail emission on game over
+    if (trailEmitter) {
+        trailEmitter.stop();
+    }
     
     playHitSound();
 
@@ -1469,6 +1494,12 @@ function restartGame(this: Phaser.Scene) {
 
     // Reset confetti tracker
     lastConfettiScore = 0;
+
+    // Reset and stop the trail until the game starts again
+    if (trailEmitter) {
+        trailEmitter.stop();
+        trailEmitter.setPosition(BIRD_X - 10, BIRD_START_Y + 2);
+    }
 
     // Resume physics in case it was paused
     this.physics.world.resume();
