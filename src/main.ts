@@ -61,7 +61,7 @@ let isMobileDevice: boolean = false;
 // Game constants
 const PIPE_WIDTH = 80; // Narrower pipes like original flappy bird
 const PIPE_HEIGHT = 320; // Height of the pipe segment
-const PIPE_GAP = 150; // Reduced from 180 for more challenge
+const PIPE_GAP = 200; // Increased gap for easier navigation
 const PIPE_SPAWN_DISTANCE = 300; // Distance between pipe pairs
 const PIPE_SPEED = 180; // Increased from 160 for faster pipes
 // Adjusted gap position limits to prevent zero-height textures
