@@ -768,16 +768,17 @@ function create(this: Phaser.Scene) {
     trailEmitter = this.add.particles(0, 0, 'trail_particle', {
         x: 0,
         y: 0,
-        lifespan: { min: 350, max: 700 },
-        speed: { min: 8, max: 18 },
+        lifespan: { min: 500, max: 900 },
+        speed: { min: 6, max: 12 },
         angle: { min: 160, max: 200 },
-        scale: { start: 0.55, end: 0 },
-        alpha: { start: 0.22, end: 0 },
+        scale: { start: 0.7, end: 0 },
+        alpha: { start: 0.35, end: 0 },
         quantity: 1,
-        frequency: 45,
+        frequency: 20,
+        maxParticles: 120,
         emitting: false,
         blendMode: 'ADD',
-        gravityY: -6
+        gravityY: -4
     });
     trailEmitter.setDepth(18); // Behind bird, above pipes
 
@@ -1236,7 +1237,16 @@ function update(this: Phaser.Scene) {
 
     // Update the smooth trail emitter to follow the bird
     if (trailEmitter && bird.active) {
-        trailEmitter.setPosition(bird.x - 10, bird.y + 2);
+        // Follow slightly behind with smoothing to avoid jitter
+        const targetX = bird.x - 12;
+        const targetY = bird.y + 3;
+        const current = trailEmitter as any;
+        const currentX = (current.x || targetX);
+        const currentY = (current.y || targetY);
+        const smooth = 0.25; // ease factor
+        const newX = currentX + (targetX - currentX) * smooth;
+        const newY = currentY + (targetY - currentY) * smooth;
+        trailEmitter.setPosition(newX, newY);
     }
 }
 
@@ -1401,7 +1411,7 @@ function startGame(this: Phaser.Scene) {
     // Begin trail emission when the game starts
     if (trailEmitter) {
         trailEmitter.start();
-        trailEmitter.setPosition(bird.x - 10, bird.y + 2);
+        trailEmitter.setPosition(bird.x - 12, bird.y + 3);
     }
 }
 
@@ -1498,7 +1508,7 @@ function restartGame(this: Phaser.Scene) {
     // Reset and stop the trail until the game starts again
     if (trailEmitter) {
         trailEmitter.stop();
-        trailEmitter.setPosition(BIRD_X - 10, BIRD_START_Y + 2);
+        trailEmitter.setPosition(BIRD_X - 12, BIRD_START_Y + 3);
     }
 
     // Resume physics in case it was paused
